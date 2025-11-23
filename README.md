@@ -1,2 +1,132 @@
-# Delhi-Air-Quality-pollutants
-Delhi's air quality is currently hazardous, with the Air Quality Index (AQI) ranging from 315 to 559, depending on the source and location. This is due to high levels of pollutants, including fine particulate matter (PM2.5) and nitrogen dioxide. 
+import numpy as np # linear algebra
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+
+# Input data files are available in the read-only "../input/" directory
+# For example, running this (by clicking run or pressing Shift+Enter) will list all files under the input directory
+
+import os
+for dirname, _, filenames in os.walk('/kaggle/input'):
+    for filename in filenames:
+        print(os.path.join(dirname, filename))
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+
+# --- 1. SETUP: File Path ---
+
+file_path = '/kaggle/input/delhi-aqi/Delhi_AQI_Dataset.csv'
+
+
+# --- 2. DATA LOADING AND CLEANUP ---
+try:
+    df = pd.read_csv(file_path)
+    print("Current Column Names:")
+    print(df.columns.tolist())
+
+    # Clean column names for easy access (strip spaces and convert to lowercase)
+    df.columns = df.columns.str.strip().str.lower().str.replace('[^0-9a-zA-Z_]', '', regex=True)
+
+    # --- 3. DATA PREPROCESSING ---
+    # Combine 'date' and 'time' columns into a single 'DateTime' column
+    # We use errors='coerce' to turn unparseable values into NaT (Not a Time)
+    df['datetime'] = pd.to_datetime(df['date'], errors='coerce')
+    df=df.dropna(subset=['datetime'])
+    
+
+    # Set 'datetime' as the index for time-series analysis
+    df = df.set_index('datetime')
+    df = df.sort_index()
+     # Define the key pollutant columns
+    # We check for common names like pm25, no2, so2 after lowercasing
+    pollutant_cols = ['pm25', 'no2', 'so2', 'co', 'o3', 'pm10']
+    
+    # Filter for columns that actually exist in the DataFrame
+    air_quality_cols = [col for col in pollutant_cols if col in df.columns]
+
+    # Handle missing values (NaN) by filling them with the mean of the column
+    df[air_quality_cols] = df[air_quality_cols].fillna(df[air_quality_cols].mean())
+    
+    # --- 4. PLOTTING FUNCTIONS ---
+
+    # --- A. Time Series Graph ---
+    def create_time_series_graph(data, columns):
+        plt.figure(figsize=(15, 6))
+        for col in columns:
+            if col in data.columns:
+                # Resample to weekly mean for smoother trend visualization
+                data[col].resample('W').mean().plot(label=col.upper(), linewidth=2)
+            
+        plt.title('Time Series Graph: Weekly Average Pollutant Trends in Delhi', fontsize=16)
+        plt.xlabel('Date', fontsize=12)
+        plt.ylabel('Concentration ($\mu g/m^3$ or ppm)', fontsize=12)
+        plt.legend(loc='upper right')
+        plt.grid(True, linestyle='--', alpha=0.7)
+        plt.tight_layout()
+        plt.savefig('delhi_aqi_timeseries_graph.png')
+        plt.show()
+
+    # --- B. Box Plot ---
+    def create_box_plot(data, columns):
+        # Filter out NaN values before plotting, although we already filled them
+        plot_data = data[columns].dropna()
+        
+        plt.figure(figsize=(10, 6))
+        plot_data.boxplot(column=columns, grid=True)
+        plt.title('Box Plot of Key Pollutant Distributions', fontsize=16)
+        plt.ylabel('Concentration', fontsize=12)
+        plt.xlabel('Pollutant', fontsize=12)
+        plt.tight_layout()
+        plt.savefig('delhi_aqi_boxplot.png')
+        plt.show()
+
+    # --- C. Pie Chart ---
+    def create_pie_chart(data, columns):
+        # Calculate the average (mean) concentration for each selected pollutant
+        avg_concentrations = data[columns].mean().abs() # Using abs to ensure positive contribution
+        
+        # Filter out any pollutant with a mean of 0 or NaN
+        valid_concentrations = avg_concentrations[avg_concentrations > 0]
+        
+        if valid_concentrations.empty:
+            print("Cannot create pie chart: All selected pollutant means are zero or missing.")
+            return
+        plt.figure(figsize=(8, 8))
+        # Use valid_concentrations.index for labels, which are the column names
+        plt.pie(
+            valid_concentrations.values, 
+            labels=[col.upper() for col in valid_concentrations.index], 
+            autopct='%1.1f%%', 
+            startangle=140, 
+            wedgeprops={'edgecolor': 'black'}
+        )
+        plt.title('Average Relative Contribution of Key Pollutants', fontsize=16)
+        plt.tight_layout()
+        plt.savefig('delhi_aqi_pie_chart.png')
+        plt.show()
+
+    # --- 5. EXECUTE PLOTS ---
+    # Columns for Time Series Graph
+    ts_cols = ['pm25', 'no2'] 
+    create_time_series_graph(df, ts_cols)
+    plt.show()
+
+    # Columns for Box Plot
+    box_cols = ['pm25', 'pm10', 'no2', 'so2']
+    create_box_plot(df, box_cols)
+    plt.show()
+     # Columns for Pie Chart (representing proportional contribution)
+    pie_cols = ['pm25', 'no2', 'so2', 'co']
+    create_pie_chart(df, pie_cols)
+    plt.show()
+    
+    print("\n--- Project Code Execution Complete ---")
+    print("Three files have been saved to your directory:")
+    print("1. delhi_aqi_timeseries_graph.png (Time Series Graph)")
+    print("2. delhi_aqi_boxplot.png (Box Plot)")
+    print("3. delhi_aqi_pie_chart.png (Pie Chart)")
+    
+except FileNotFoundError:
+    print(f"\nError: File not found. Please ensure '{file_path}' is available in your current working directory.")
+except Exception as e:
+    print(f"\nAn error occurred during data processing or plotting: {e}")
